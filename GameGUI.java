@@ -63,7 +63,7 @@ public class GameGUI extends JComponent
   private JFrame frame;
 
   private int score = 10; 
-  private int movesLeft = 30; 
+  private int movesLeft = 20; 
   private boolean timerExpired = false;
 
   // Fake coin trap that looks like a prize
