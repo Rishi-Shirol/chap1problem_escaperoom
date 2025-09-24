@@ -4,14 +4,19 @@ import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.Image;
 import java.awt.Point;
-
 import javax.swing.JComponent;
 import javax.swing.JFrame;
-
+import javax.swing.JPanel;
+import javax.swing.JLabel;
+import javax.swing.SwingConstants;
+import java.awt.BorderLayout;
+import javax.swing.Timer;
 import java.io.File;
 import javax.imageio.ImageIO;
-
 import java.util.Random;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
+import javax.swing.JOptionPane;
 
 /**
  * A Game board on which to place and move players.
@@ -35,10 +40,7 @@ public class GameGUI extends JComponent
   int x = START_LOC_X; 
   int y = START_LOC_Y;
 
-  // grid image to show in background
   private Image bgImage;
-
-  // player image and info
   private Image player;
   private Point playerLoc;
   private int playerSteps;
@@ -52,15 +54,33 @@ public class GameGUI extends JComponent
   private int totalTraps;
   private Rectangle[] traps;
 
-  // scores, sometimes awarded as (negative) penalties
   private int prizeVal = 10;
   private int trapVal = 5;
   private int endVal = 10;
-  private int offGridVal = 5; // penalty only
-  private int hitWallVal = 5;  // penalty only
+  private int offGridVal = 5; 
+  private int hitWallVal = 5; 
 
-  // game frame
   private JFrame frame;
+
+  private int score = 10; 
+  private int movesLeft = 30; 
+  private boolean timerExpired = false;
+
+  // Fake coin trap that looks like a prize
+  private Rectangle fakeCoin; 
+  private boolean fakeCoinActive = true;
+
+  // 3 Scan ability to detect fake coin ahead
+  private int scanCount = 3; 
+
+  // Stats panel components
+  private JPanel statsPanel;
+  private JLabel scoreLabel;
+  private JLabel movesLabel;
+  private JLabel timerLabel;
+  private JLabel scansLabel;
+  private Timer swingTimer;
+  private int timeLeft = 15;
 
   /**
    * Constructor for the GameGUI class.
@@ -70,38 +90,158 @@ public class GameGUI extends JComponent
   {
     
     try {
-      bgImage = ImageIO.read(new File("grid.png"));      
+      bgImage = ImageIO.read(new File("chap1problem_escaperoom-main/grid.png"));      
     } catch (Exception e) {
       System.err.println("Could not open file grid.png");
     }      
     try {
-      prizeImage = ImageIO.read(new File("coin.png"));      
+      prizeImage = ImageIO.read(new File("chap1problem_escaperoom-main/coin.png"));      
     } catch (Exception e) {
       System.err.println("Could not open file coin.png");
     }
-  
-    // player image, student can customize this image by changing file on disk
     try {
-      player = ImageIO.read(new File("player.png"));      
+      player = ImageIO.read(new File("chap1problem_escaperoom-main/player.png"));      
     } catch (Exception e) {
      System.err.println("Could not open file player.png");
     }
-    // save player location
     playerLoc = new Point(x,y);
 
     // create the game frame
     frame = new JFrame();
     frame.setTitle("EscapeRoom");
-    frame.setSize(WIDTH, HEIGHT);
+    frame.setSize(WIDTH + 150, HEIGHT); 
     frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-    frame.add(this);
+    frame.setLayout(new BorderLayout());
+    frame.add(this, BorderLayout.CENTER);
+    frame.setResizable(false);
+    statsPanel = new JPanel();
+    statsPanel.setLayout(new java.awt.GridLayout(4, 1));
+    scoreLabel = new JLabel("Score: " + score, SwingConstants.CENTER);
+    movesLabel = new JLabel("Moves left: " + movesLeft, SwingConstants.CENTER);
+    timerLabel = new JLabel("Time left: " + timeLeft + "s", SwingConstants.CENTER);
+    scansLabel = new JLabel("Scans left: " + scanCount, SwingConstants.CENTER);
+    statsPanel.add(scoreLabel);
+    statsPanel.add(movesLabel);
+    statsPanel.add(timerLabel);
+    statsPanel.add(scansLabel);
+    frame.add(statsPanel, BorderLayout.EAST);
     frame.setVisible(true);
-    frame.setResizable(false); 
 
     // set default config
     totalWalls = 20;
     totalPrizes = 3;
     totalTraps = 5;
+
+    // Start the timer
+    swingTimer = new Timer(1000, evt -> {
+      timeLeft--;
+      timerLabel.setText("Time left: " + timeLeft + "s");
+      if (timeLeft <= 0) {
+        timerExpired = true;
+        JOptionPane.showMessageDialog(frame, "Game Over! Time's up.");
+        endGame();
+        swingTimer.stop();
+      }
+    });
+    swingTimer.start();
+
+    // e for pickup, WASD for jump, q for detrap, f for scan
+    frame.addKeyListener(new KeyAdapter() {
+      @Override
+      public void keyPressed(KeyEvent e) {
+        if (score <= 0 || movesLeft <= 0 || timerExpired) return;
+        int key = e.getKeyCode();
+        boolean moved = false;
+        int moveResult = 0;
+        if (key == KeyEvent.VK_RIGHT) {
+          moveResult = movePlayer(SPACE_SIZE, 0);
+          moved = true;
+        } else if (key == KeyEvent.VK_LEFT) {
+          moveResult = movePlayer(-SPACE_SIZE, 0);
+          moved = true;
+        } else if (key == KeyEvent.VK_UP) {
+          moveResult = movePlayer(0, -SPACE_SIZE);
+          moved = true;
+        } else if (key == KeyEvent.VK_DOWN) {
+          moveResult = movePlayer(0, SPACE_SIZE);
+          moved = true;
+        }
+        else if (key == KeyEvent.VK_W) {
+          moveResult = movePlayer(0, -2 * SPACE_SIZE);
+          moved = true;
+        } else if (key == KeyEvent.VK_A) {
+          moveResult = movePlayer(-2 * SPACE_SIZE, 0);
+          moved = true;
+        } else if (key == KeyEvent.VK_S) {
+          moveResult = movePlayer(0, 2 * SPACE_SIZE);
+          moved = true;
+        } else if (key == KeyEvent.VK_D) {
+          moveResult = movePlayer(2 * SPACE_SIZE, 0);
+          moved = true;
+        }
+        else if (key == KeyEvent.VK_E) {
+          if (isOnFakeCoin() && fakeCoinActive) {
+            score -= 5;
+            JOptionPane.showMessageDialog(frame, "It's a trap! Score: " + score);
+          } else {
+            int prizeResult = pickupPrize();
+            score += prizeResult;
+            if (prizeResult > 0) {
+              JOptionPane.showMessageDialog(frame, "Score: " + score);
+            } else {
+              JOptionPane.showMessageDialog(frame, "No coin here! Score: " + score);
+            }
+          }
+        }
+        else if (key == KeyEvent.VK_Q) {
+          if (isOnFakeCoin()) {
+            fakeCoinActive = false;
+            repaint();
+            JOptionPane.showMessageDialog(frame, "Trap disarmed and fake coin removed!");
+          }
+        }
+        else if (key == KeyEvent.VK_F) {
+          if (scanCount > 0) {
+            scanCount--;
+            if (isFakeCoinAhead()) {
+              JOptionPane.showMessageDialog(frame, "Scan: FAKE COIN detected ahead!");
+            } else {
+              JOptionPane.showMessageDialog(frame, "Scan: No fake coin ahead.");
+            }
+          } else {
+            JOptionPane.showMessageDialog(frame, "No scans left!");
+          }
+        }
+
+        if (moved) {
+          movesLeft--;
+          score += moveResult;
+          if (moveResult < 0) {
+            JOptionPane.showMessageDialog(frame, "Invalid move! Score: " + score);
+          }
+        }
+
+        scoreLabel.setText("Score: " + score);
+        movesLabel.setText("Moves left: " + movesLeft);
+        timerLabel.setText("Time left: " + timeLeft + "s");
+        scansLabel.setText("Scans left: " + scanCount);
+
+        // Check for lose conditions
+        if (score <= 0) {
+          JOptionPane.showMessageDialog(frame, "Game Over! You ran out of points.");
+          endGame();
+        } else if (movesLeft <= 0) {
+          JOptionPane.showMessageDialog(frame, "Game Over! You ran out of moves.");
+          endGame();
+        } else if (timerExpired) {
+          JOptionPane.showMessageDialog(frame, "Game Over! Time's up.");
+          endGame();
+        } else if (allPrizesCollected()) {
+          JOptionPane.showMessageDialog(frame, "Congratulations! You collected all the coins and finished the game.");
+          endGame();
+        }
+      }
+    });
   }
 
  /**
@@ -112,12 +252,12 @@ public class GameGUI extends JComponent
   {
     traps = new Rectangle[totalTraps];
     createTraps();
-    
     prizes = new Rectangle[totalPrizes];
     createPrizes();
-
     walls = new Rectangle[totalWalls];
     createWalls();
+    fakeCoin = new Rectangle(START_LOC_X + SPACE_SIZE * 3, START_LOC_Y + SPACE_SIZE * 2, 15, 15); // Example location
+    fakeCoinActive = true;
   }
 
   /**
@@ -137,53 +277,45 @@ public class GameGUI extends JComponent
       int newX = x + incrx;
       int newY = y + incry;
       
-      // increment regardless of whether player really moves
       playerSteps++;
 
       // check if off grid horizontally and vertically
       if ( (newX < 0 || newX > WIDTH-SPACE_SIZE) || (newY < 0 || newY > HEIGHT-SPACE_SIZE) )
       {
         System.out.println ("OFF THE GRID!");
+        score -= 10;
         return -offGridVal;
       }
 
       // determine if a wall is in the way
       for (Rectangle r: walls)
       {
-        // this rect. location
         int startX =  (int)r.getX();
         int endX  =  (int)r.getX() + (int)r.getWidth();
         int startY =  (int)r.getY();
         int endY = (int) r.getY() + (int)r.getHeight();
 
-        // (Note: the following if statements could be written as huge conditional but who wants to look at that!?)
-        // moving RIGHT, check to the right
         if ((incrx > 0) && (x <= startX) && (startX <= newX) && (y >= startY) && (y <= endY))
         {
           System.out.println("A WALL IS IN THE WAY");
           return -hitWallVal;
         }
-        // moving LEFT, check to the left
         else if ((incrx < 0) && (x >= startX) && (startX >= newX) && (y >= startY) && (y <= endY))
         {
           System.out.println("A WALL IS IN THE WAY");
           return -hitWallVal;
         }
-        // moving DOWN check below
         else if ((incry > 0) && (y <= startY && startY <= newY && x >= startX && x <= endX))
         {
           System.out.println("A WALL IS IN THE WAY");
           return -hitWallVal;
         }
-        // moving UP check above
         else if ((incry < 0) && (y >= startY) && (startY >= newY) && (x >= startX) && (x <= endX))
         {
           System.out.println("A WALL IS IN THE WAY");
           return -hitWallVal;
         }     
       }
-
-      // all is well, move player
       x += incrx;
       y += incry;
       repaint();   
@@ -208,8 +340,6 @@ public class GameGUI extends JComponent
 
     for (Rectangle r: traps)
     {
-      // DEBUG: System.out.println("trapx:" + r.getX() + " trapy:" + r.getY() + "\npx: " + px + " py:" + py);
-      // zero size traps have already been sprung, ignore
       if (r.getWidth() > 0)
       {
         // if new location of player has a trap, return true
@@ -220,7 +350,6 @@ public class GameGUI extends JComponent
         }
       }
     }
-    // there is no trap where player wants to go
     return false;
   }
 
@@ -239,13 +368,10 @@ public class GameGUI extends JComponent
     double px = playerLoc.getX() + newx;
     double py = playerLoc.getY() + newy;
 
-    // check all traps, some of which may be already sprung
     for (Rectangle r: traps)
     {
-      // DEBUG: System.out.println("trapx:" + r.getX() + " trapy:" + r.getY() + "\npx: " + px + " py:" + py);
       if (r.contains(px, py))
       {
-        // zero size traps indicate it has been sprung, cannot spring again, so ignore
         if (r.getWidth() > 0)
         {
           r.setSize(0,0);
@@ -254,7 +380,6 @@ public class GameGUI extends JComponent
         }
       }
     }
-    // no trap here, penalty
     System.out.println("THERE IS NO TRAP HERE TO SPRING");
     return -trapVal;
   }
@@ -271,18 +396,18 @@ public class GameGUI extends JComponent
 
     for (Rectangle p: prizes)
     {
-      // DEBUG: System.out.println("prizex:" + p.getX() + " prizey:" + p.getY() + "\npx: " + px + " py:" + py);
-      // if location has a prize, pick it up
+      // if location has a coin, pick it up
       if (p.getWidth() > 0 && p.contains(px, py))
       {
-        System.out.println("YOU PICKED UP A PRIZE!");
+        System.out.println("YOU PICKED UP A COIN!");
         p.setSize(0,0);
         repaint();
         return prizeVal;
       }
     }
-    System.out.println("OOPS, NO PRIZE HERE");
+    System.out.println("OOPS, NO COIN HERE");
     return -prizeVal;  
+    
   }
 
   /**
@@ -392,15 +517,19 @@ public class GameGUI extends JComponent
     // add prizes
     for (Rectangle p : prizes)
     {
-      // picked up prizes are 0 size so don't render
       if (p.getWidth() > 0) 
       {
-      int px = (int)p.getX();
-      int py = (int)p.getY();
-      g.drawImage(prizeImage, px, py, null);
+        int px = (int)p.getX();
+        int py = (int)p.getY();
+        g.drawImage(prizeImage, px, py, null);
       }
     }
-
+    // draw fake coin trap if active
+    if (fakeCoinActive) {
+      int fx = (int)fakeCoin.getX();
+      int fy = (int)fakeCoin.getY();
+      g.drawImage(prizeImage, fx, fy, null); // Use prize image for fake coin
+    }
     // add walls
     for (Rectangle r : walls) 
     {
@@ -411,6 +540,8 @@ public class GameGUI extends JComponent
     // draw player, saving its location
     g.drawImage(player, x, y, 40,40, null);
     playerLoc.setLocation(x,y);
+
+    // (do not draw stats here, as they are now in the right panel)
   }
 
   /*------------------- private methods -------------------*/
@@ -487,20 +618,47 @@ public class GameGUI extends JComponent
    */
   private int playerAtEnd() 
   {
-    int score;
+    int result;
 
     double px = playerLoc.getX();
     if (px > (WIDTH - 2*SPACE_SIZE))
     {
       System.out.println("YOU MADE IT!");
-      score = endVal;
+      result = endVal;
     }
     else
     {
-      System.out.println("OOPS, YOU QUIT TOO SOON!");
-      score = -endVal;
+      System.out.println("OOPS, YOU LOSE!, Final Score: " + score);
+      result = -endVal;
     }
-    return score;
+    return result;
   
+  }
+
+  // Helper to check if all prizes are collected
+  private boolean allPrizesCollected() {
+    for (Rectangle p : prizes) {
+      if (p.getWidth() > 0) return false;
+    }
+    return true;
+  }
+
+  //helper to check if player is on the fake coin
+  private boolean isOnFakeCoin() {
+    return fakeCoinActive && fakeCoin.contains(x, y);
+  }
+
+
+
+  //scan to check if fake coin is ahead of player
+  private boolean isFakeCoinAhead() {
+    //check in one square ahead in each direction
+    int[][] dirs = { {SPACE_SIZE,0}, {-SPACE_SIZE,0}, {0,SPACE_SIZE}, {0,-SPACE_SIZE} };
+    for (int[] d : dirs) {
+      int nx = x + d[0];
+      int ny = y + d[1];
+      if (fakeCoinActive && fakeCoin.contains(nx, ny)) return true;
+    }
+    return false;
   }
 }
