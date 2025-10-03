@@ -212,6 +212,35 @@ public class GameGUI extends JComponent
             JOptionPane.showMessageDialog(frame, "No scans left!");
           }
         }
+        // Add help screen for 'h'
+        else if (key == KeyEvent.VK_H) {
+          JOptionPane.showMessageDialog(frame,
+            "Escape Room Help:\n" +
+            "Arrow keys: Move\n" +
+            "WASD: Jump\n" +
+            "E: Pick up coin\n" +
+            "Q: Disarm fake coin\n" +
+            "F: Scan for fake coin\n" +
+            "R: Reset game\n" +
+            "H: Show this help screen\n",
+            "Help", JOptionPane.INFORMATION_MESSAGE);
+        }
+        // Add reset for 'r'
+        else if (key == KeyEvent.VK_R) {
+          int result = replay();
+          score = 10;
+          movesLeft = 20;
+          scanCount = 3;
+          timeLeft = 15;
+          timerExpired = false;
+          fakeCoinActive = true;
+          scoreLabel.setText("Score: " + score);
+          movesLabel.setText("Moves left: " + movesLeft);
+          timerLabel.setText("Time left: " + timeLeft + "s");
+          scansLabel.setText("Scans left: " + scanCount);
+          swingTimer.restart();
+          JOptionPane.showMessageDialog(frame, "Game has been reset!");
+        }
 
         if (moved) {
           movesLeft--;
